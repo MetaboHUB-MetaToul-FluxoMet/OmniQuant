@@ -6,7 +6,7 @@ authors = ["llegregam <legregam@insa-toulouse.fr>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "^3.10"
 pandas = "^2.1.4"
 plotly = "^5.18.0"
 
