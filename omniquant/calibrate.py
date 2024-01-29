@@ -170,6 +170,11 @@ class Quantifier:
             metabolite_name: str,
             cal_data: pd.DataFrame
     ):
+
+        # Private
+        self._calibrator = None
+
+        # Public
         self.metabolite_name = metabolite_name
         self.cal_data = cal_data
         self.is_int_std = False
@@ -190,13 +195,7 @@ class Quantifier:
                 else:
                     self.is_int_std_conc_known = True
                     self.case = 5
-        self.calibrator = Calibrator(
-            name=self.metabolite_name,
-            x=cal_data["Cal_Concentration"].to_numpy(),
-            y=self.cal_data["Cal_Signal"].to_numpy() if self.is_int_std is False
-            else np.divide(self.cal_data["Cal_Signal"].to_numpy(), self.cal_data["IS_signal"]),
-            case=self.case
-        )
+
         self.set_quantifier()
 
     def __repr__(self):
@@ -220,6 +219,27 @@ class Quantifier:
             case 5:
                 self.quantify = self._quantify_int_std_with_conc
 
+    @property
+    def calibrator(self):
+        """
+        Initialize or get the calibrator. Only used in cases 2 & 4.
+        :return: Initialized calibrator object
+        """
+
+        if self._calibrator:
+            return self._calibrator
+        if self.case not in [2, 4]:
+            raise CaseError(f"Use case is initialized as {self.case}. Only cases 2 & 4 get a calibrator")
+
+        self._calibrator = Calibrator(
+            name=self.metabolite_name,
+            x=cal_data["Cal_Concentration"].to_numpy(),
+            y=self.cal_data["Cal_Signal"].to_numpy() if self.is_int_std is False
+            else np.divide(self.cal_data["Cal_Signal"].to_numpy(), self.cal_data["IS_signal"]),
+            case=self.case
+        )
+        return self._calibrator
+
     def _quantify_no_int_std_no_curve(self, signal):
         """
         Relative quantification of our signal.
@@ -242,6 +262,9 @@ class Quantifier:
     def _quantify_int_std_with_conc(self):
         return "Case 5"
 
+
+class CaseError(Exception):
+    pass
 
 if __name__ == "__main__":
     pd.options.display.max_columns = None
