@@ -45,8 +45,8 @@ class Calibrator:
         self._polynome = None
         self._polynome_plot = None
         self.excluded_values = {
-            "x" : [],
-            "y" : []
+            "x": [],
+            "y": []
         }
 
     def __setattr__(self, key, value):
@@ -69,12 +69,23 @@ class Calibrator:
         self.__dict__[key] = value
 
     def _reset(self):
-
-        self.scaled_polynome = None
+        """
+        Function to reset the polynomials. Should be called when any method modifies the calibration data (exclusion of
+        some data points for example)
+        :return:
+        """
+        self._scaled_polynome = None
         self._polynome_plot = None
-        self._equation = None
 
-    def drop_value(self, axis, value):
+    def drop(self, axis, value):
+        """
+        Drop a value and associated value from axes x and y using index. The index and the value are saved to the
+        excluded values.
+        :param axis: axis x or y on which to search for value to remove. The removal of a value from an axis removes
+                     its sister value from the other axis.
+        :param value: value to remove.
+        :return: if 0 then the polynome and thus the plot are reset.
+        """
 
         if axis not in ["x", "y"]:
             raise ValueError(f"Axis term can only be x or y. Detected term: {axis}")
@@ -82,17 +93,23 @@ class Calibrator:
         idx = np.where(getattr(self, axis) == value)[0]
         self.excluded_values["x"].append((idx, self.x[idx]))
         self.excluded_values["y"].append((idx, self.y[idx]))
-        self.x = np.delete(self.x, idx)
-        self.y = np.delete(self.y, idx)
+        self.x, self.y = np.delete(self.x, idx), np.delete(self.y, idx)
         self._reset()
 
     @property
     def equation(self):
-
+        """
+        Return's the equation by converting the [-1, 1] scaled polynomial to the original scale.
+        :return: Converted polynomial to original scale
+        """
         return self.scaled_polynome.convert()
 
     @property
     def scaled_polynome(self):
+        """
+        Get the scaled polynome from the Polynomial Fit class of numpy
+        :return: Scaled ([-1, 1]) polynome.
+        """
 
         if self._polynome:
             return self._polynome
@@ -105,19 +122,23 @@ class Calibrator:
 
     @property
     def polynome_plot(self):
+        """
+        Get the updated polynomial plot from the Plotly interface.
+        :return: Plotly figure
+        """
 
         if self._polynome_plot:
             return self._polynome_plot
 
         x_name = "Metabolite concentration"
-        y_name = None
         match self.case:
             case 2:
                 y_name = "Signal"
             case 4:
                 y_name = "Signal/IS"
-        if not y_name:
-            raise ValueError("Couldn't coerce name for y axis. Please make sure you have calibration curve data")
+            # Wildcard case to catch other cases in an error
+            case _:
+                raise ValueError("Couldn't coerce name for y axis. Please make sure you have calibration curve data")
 
         points = go.Scatter(
             x=self.x,
@@ -131,14 +152,14 @@ class Calibrator:
             y=poly_y,
             mode='lines'
         )
-        layout = go.Layout(
+        data = [points, trend]
+        self._polynome_plot = go.Figure(data=data)
+        self._polynome_plot.update_figure(
             title=f'{self.name}',
             showlegend=True,
             xaxis_title=x_name,
             yaxis_title=y_name
         )
-        data = [points, trend]
-        self._polynome_plot = go.Figure(data=data, layout=layout)
         return self._polynome_plot
 
 
