@@ -33,6 +33,94 @@ def read_data(path: str) -> pd.DataFrame:
     return df
 
 
+class Calibrator:
+
+    def __init__(self, name, x, y, case, degree=2):
+
+        self.name = name
+        self.x = x
+        self.y = y
+        self.case = case
+        self.degree = degree
+        self._polynome = None
+        self._polynome_plot = None
+
+    def __setattr__(self, key, value):
+
+        # Here something I don't understand is why value contains a tuple in which the array to set is placed. For now
+        # I'll just use indexing to get the value.
+        if key in ["x", "y"]:
+            if type(value) != np.ndarray:
+                try:
+                    value = np.array(value)
+                except Exception:
+                    raise TypeError(f"There was an error while converting the array to numpy ndarray. Array: {value}")
+            if len(value) <= 1:
+                raise ValueError(f"To build calibration, x values must be more than 1. Number of values: {len(value)}")
+            if not value.all() > 0:
+                raise ValueError(f"All the values of the calibration data arrays must be positive")
+
+        if (key == "case") and (value not in [2, 4]):
+            raise ValueError(f"Use case can only be 2 or 4. Detected case: {key}")
+
+        self.__dict__[key] = value
+
+    @property
+    def equation(self):
+
+        return self.scaled_polynome.convert()
+
+    @property
+    def scaled_polynome(self):
+
+        if self._polynome:
+            return self._polynome
+        self._polynome = np.polynomial.Polynomial.fit(
+            x=self.x,
+            y=self.y,
+            deg=self.degree
+        )
+        return self._polynome
+
+    @property
+    def polynome_plot(self):
+
+        if self._polynome_plot:
+            return self._polynome_plot
+
+        x_name = "Metabolite concentration"
+        y_name = None
+        match self.case:
+            case 2:
+                y_name = "Signal"
+            case 4:
+                y_name = "Signal/IS"
+        if not y_name:
+            raise ValueError("Couldn't coerce name for y axis. Please make sure you have calibration curve data")
+
+        points = go.Scatter(
+            x=self.x,
+            y=self.y,
+            mode='markers',
+            name='data'
+        )
+        poly_x, poly_y = self.scaled_polynome.linspace()
+        trend = go.Scatter(
+            x=poly_x,
+            y=poly_y,
+            mode='lines'
+        )
+        layout = go.Layout(
+            title=f'{self.name}',
+            showlegend=True,
+            xaxis_title=x_name,
+            yaxis_title=y_name
+        )
+        data = [points, trend]
+        self._polynome_plot = go.Figure(data=data, layout=layout)
+        return self._polynome_plot
+
+
 class Quantifier:
 
     def __init__(
@@ -60,6 +148,13 @@ class Quantifier:
                 else:
                     self.is_int_std_conc_known = True
                     self.case = 5
+        self.calibrator = Calibrator(
+            name=self.metabolite_name,
+            x=cal_data["Cal_Concentration"].to_numpy(),
+            y=self.cal_data["Cal_Signal"].to_numpy() if self.is_int_std is False
+            else np.divide(self.cal_data["Cal_Signal"].to_numpy(), self.cal_data["IS_signal"]),
+            case=self.case
+        )
         self.set_quantifier()
 
     def __repr__(self):
@@ -82,52 +177,6 @@ class Quantifier:
                 self.quantify = self._quantify_int_std_no_conc_with_curve
             case 5:
                 self.quantify = self._quantify_int_std_with_conc
-
-    def build_calibration(self, deg, draw):
-
-        x = self.cal_data["Cal_Concentration"].to_numpy()
-        y = self.cal_data["Cal_Signal"].to_numpy() if self.is_int_std is False \
-            else np.divide(self.cal_data["Cal_Signal"].to_numpy(), self.cal_data["IS_signal"])
-        print(f'x = {x}')
-        print(f'y = {y}')
-        # Build polynomial
-        polynome_fit = np.polynomial.Polynomial.fit(
-            x=x,
-            y=y,
-            deg=deg
-        )
-
-
-        if draw:
-            self._draw_polynome(polynome_fit, x, y)
-
-        # Build
-        pass
-
-
-    def _draw_polynome(self, polynome, x, y):
-
-
-        # fig = px.scatter(self.cal_data, x=x, y=y, trendline="ols", trendline_options=dict())
-
-        points = go.Scatter(
-            x=x,
-            y=y,
-            mode='markers',
-            name='data'
-        )
-        layout = go.Layout(
-            title='Test of polynomial fit'
-        )
-        poly_x, poly_y = polynome.linspace()
-        trend = go.Scatter(
-            x=poly_x,
-            y=poly_y,
-            mode='lines'
-        )
-        data = [points, trend]
-        fig = go.Figure(data=data, layout=layout)
-        fig.show()
 
     def _quantify_no_int_std_no_curve(self, signal):
         """
@@ -224,8 +273,10 @@ if __name__ == "__main__":
         test_case_4
     ]
 
-    quant = Quantifier(test_case_4[0], test_case_4[1])
-    quant.build_calibration(2, True)
+    quant = Quantifier(test_case_2[0], test_case_2[1])
+    print(quant.calibrator.scaled_polynome)
+    print(quant.calibrator.equation)
+    quant.calibrator.polynome_plot.show()
 
     # print(data.head(10))
     # for metabolite in data.Molecule.unique():
