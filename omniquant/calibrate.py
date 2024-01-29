@@ -44,11 +44,14 @@ class Calibrator:
         self.degree = degree
         self._polynome = None
         self._polynome_plot = None
+        self.excluded_values = {
+            "x" : [],
+            "y" : []
+        }
 
     def __setattr__(self, key, value):
 
-        # Here something I don't understand is why value contains a tuple in which the array to set is placed. For now
-        # I'll just use indexing to get the value.
+        # We handle x and y setting here because the same verification procedure is applied to both.
         if key in ["x", "y"]:
             if type(value) != np.ndarray:
                 try:
@@ -64,6 +67,24 @@ class Calibrator:
             raise ValueError(f"Use case can only be 2 or 4. Detected case: {key}")
 
         self.__dict__[key] = value
+
+    def _reset(self):
+
+        self.scaled_polynome = None
+        self._polynome_plot = None
+        self._equation = None
+
+    def drop_value(self, axis, value):
+
+        if axis not in ["x", "y"]:
+            raise ValueError(f"Axis term can only be x or y. Detected term: {axis}")
+
+        idx = np.where(getattr(self, axis) == value)[0]
+        self.excluded_values["x"].append((idx, self.x[idx]))
+        self.excluded_values["y"].append((idx, self.y[idx]))
+        self.x = np.delete(self.x, idx)
+        self.y = np.delete(self.y, idx)
+        self._reset()
 
     @property
     def equation(self):
