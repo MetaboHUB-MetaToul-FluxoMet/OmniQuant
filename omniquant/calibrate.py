@@ -14,7 +14,6 @@ Steps:
 * Returns the calculated data
 
 """
-from __future__ import annotations
 
 from pathlib import Path
 
@@ -37,13 +36,16 @@ class Calibrator:
 
     def __init__(self, name, x, y, case, degree=2):
 
+        # Private
+        self._polynome = None
+        self._polynome_plot = None
+
+        # Public
         self.name = name
         self.x = x
         self.y = y
         self.case = case
         self.degree = degree
-        self._polynome = None
-        self._polynome_plot = None
         self.excluded_values = {
             "x": [],
             "y": []
@@ -72,7 +74,6 @@ class Calibrator:
         """
         Function to reset the polynomials. Should be called when any method modifies the calibration data (exclusion of
         some data points for example)
-        :return:
         """
         self._scaled_polynome = None
         self._polynome_plot = None
@@ -84,7 +85,6 @@ class Calibrator:
         :param axis: axis x or y on which to search for value to remove. The removal of a value from an axis removes
                      its sister value from the other axis.
         :param value: value to remove.
-        :return: if 0 then the polynome and thus the plot are reset.
         """
 
         if axis not in ["x", "y"]:
@@ -154,16 +154,19 @@ class Calibrator:
         )
         data = [points, trend]
         self._polynome_plot = go.Figure(data=data)
-        self._polynome_plot.update_figure(
-            title=f'{self.name}',
-            showlegend=True,
-            xaxis_title=x_name,
-            yaxis_title=y_name
+        self._polynome_plot.update_layout({
+            "title": f'{self.name}',
+            "showlegend": True,
+            "xaxis_title": x_name,
+            "yaxis_title": y_name
+        }
         )
         return self._polynome_plot
 
 
 class Quantifier:
+
+    CASES = [1, 2, 3, 4, 5]
 
     def __init__(
             self,
@@ -181,22 +184,22 @@ class Quantifier:
         self.is_int_std_conc_known = False
         self.is_cal_points = False
         self.quantify = None
-        self.case = 1
+        case = 1
         if not self.cal_data.empty:
             if self.cal_data["Cal_Signal"].any() and len(self.cal_data["Cal_Signal"] > 1):
                 self.is_cal_points = True
-                self.case = 2
+                case = 2
             if self.cal_data["IS_signal"].any():
                 self.is_int_std = True
                 if not self.cal_data["IS_Concentration"].any():
-                    self.case = 3
+                    case = 3
                     if self.is_cal_points:
-                        self.case = 4
+                        case = 4
                 else:
                     self.is_int_std_conc_known = True
-                    self.case = 5
-
-        self.set_quantifier()
+                    case = 5
+        self._case = case
+        self._set_quantifier_func()
 
     def __repr__(self):
 
@@ -206,8 +209,19 @@ class Quantifier:
                 f"Is the internal standard concentration known: {'Yes' if self.is_int_std_conc_known else 'No'}\n"
                 f"Are there multiple calibration points: {'Yes' if self.is_cal_points else 'No'}")
 
-    def set_quantifier(self):
-        match self.case:
+    @case.setter
+    def case(self, value):
+        if value not in self.CASES:
+            raise ValueError(f"Case possible choice are: {self.CASES}")
+        self._case = value
+        self._set_quantifier_func()
+
+    @property
+    def case(self):
+        return self._case
+
+    def _set_quantifier_func(self):
+        match self._case:
             case 1:
                 self.quantify = self._quantify_no_int_std_no_curve
             case 2:
@@ -233,7 +247,7 @@ class Quantifier:
 
         self._calibrator = Calibrator(
             name=self.metabolite_name,
-            x=cal_data["Cal_Concentration"].to_numpy(),
+            x=self.cal_data["Cal_Concentration"].to_numpy(),
             y=self.cal_data["Cal_Signal"].to_numpy() if self.is_int_std is False
             else np.divide(self.cal_data["Cal_Signal"].to_numpy(), self.cal_data["IS_signal"]),
             case=self.case
@@ -265,6 +279,7 @@ class Quantifier:
 
 class CaseError(Exception):
     pass
+
 
 if __name__ == "__main__":
     pd.options.display.max_columns = None
