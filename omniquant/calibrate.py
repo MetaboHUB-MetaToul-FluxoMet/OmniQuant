@@ -50,6 +50,7 @@ class Calibrator:
             "x": [],
             "y": []
         }
+        self.polynome_details = None
 
     def __setattr__(self, key, value):
 
@@ -102,7 +103,7 @@ class Calibrator:
         Return's the equation by converting the [-1, 1] scaled polynomial to the original scale.
         :return: Converted polynomial to original scale
         """
-        return self.scaled_polynome.convert()
+        return np.poly1d(list(self.scaled_polynome.convert().coef).reverse())
 
     @property
     def scaled_polynome(self):
@@ -113,11 +114,18 @@ class Calibrator:
 
         if self._polynome:
             return self._polynome
-        self._polynome = np.polynomial.Polynomial.fit(
+        self._polynome, polynome_details = np.polynomial.Polynomial.fit(
             x=self.x,
             y=self.y,
-            deg=self.degree
+            deg=self.degree,
+            full=True
         )
+        self.polynome_details = {
+            "SSR": polynome_details[0],
+            "Rank": polynome_details[1],
+            "SV": polynome_details[2],
+            "Rcond": polynome_details[3]
+        }
         return self._polynome
 
     @property
@@ -136,7 +144,7 @@ class Calibrator:
                 y_name = "Signal"
             case 4:
                 y_name = "Signal/IS"
-            # Wildcard case to catch other cases in an error
+            # Wildcard case to catch other cases as an error
             case _:
                 raise ValueError("Couldn't coerce name for y axis. Please make sure you have calibration curve data")
 
@@ -176,6 +184,7 @@ class Quantifier:
 
         # Private
         self._calibrator = None
+        self._case = None
 
         # Public
         self.metabolite_name = metabolite_name
@@ -184,6 +193,35 @@ class Quantifier:
         self.is_int_std_conc_known = False
         self.is_cal_points = False
         self.quantify = None
+        self.case = self.select_case()
+
+    def __repr__(self):
+
+        return (f"Metabolite Name: {self.metabolite_name}\n"
+                f"Calibration Data: {self.cal_data}\n"
+                f"Is an internal standard present: {'Yes' if self.is_int_std else 'No'}\n"
+                f"Is the internal standard concentration known: {'Yes' if self.is_int_std_conc_known else 'No'}\n"
+                f"Are there multiple calibration points: {'Yes' if self.is_cal_points else 'No'}")
+
+    @property
+    def case(self):
+        return self._case
+
+    @case.setter
+    def case(self, value):
+        if value not in self.CASES:
+            raise ValueError(f"Case possible choice are: {self.CASES}")
+        self._case = value
+        self._set_quantifier_func()
+
+    def select_case(self):
+        """
+        Return the use case we are in
+
+        :return: Use case
+        """
+
+        # TODO: Function needs refactoring (too nested for nothing)
         case = 1
         if not self.cal_data.empty:
             if self.cal_data["Cal_Signal"].any() and len(self.cal_data["Cal_Signal"] > 1):
@@ -198,30 +236,10 @@ class Quantifier:
                 else:
                     self.is_int_std_conc_known = True
                     case = 5
-        self._case = case
-        self._set_quantifier_func()
-
-    def __repr__(self):
-
-        return (f"Metabolite Name: {self.metabolite_name}\n"
-                f"Calibration Data: {self.cal_data}\n"
-                f"Is an internal standard present: {'Yes' if self.is_int_std else 'No'}\n"
-                f"Is the internal standard concentration known: {'Yes' if self.is_int_std_conc_known else 'No'}\n"
-                f"Are there multiple calibration points: {'Yes' if self.is_cal_points else 'No'}")
-
-    @case.setter
-    def case(self, value):
-        if value not in self.CASES:
-            raise ValueError(f"Case possible choice are: {self.CASES}")
-        self._case = value
-        self._set_quantifier_func()
-
-    @property
-    def case(self):
-        return self._case
+        return case
 
     def _set_quantifier_func(self):
-        match self._case:
+        match self.case:
             case 1:
                 self.quantify = self._quantify_no_int_std_no_curve
             case 2:
@@ -245,13 +263,17 @@ class Quantifier:
         if self.case not in [2, 4]:
             raise CaseError(f"Use case is initialized as {self.case}. Only cases 2 & 4 get a calibrator")
 
-        self._calibrator = Calibrator(
-            name=self.metabolite_name,
-            x=self.cal_data["Cal_Concentration"].to_numpy(),
-            y=self.cal_data["Cal_Signal"].to_numpy() if self.is_int_std is False
-            else np.divide(self.cal_data["Cal_Signal"].to_numpy(), self.cal_data["IS_signal"]),
-            case=self.case
-        )
+        try:
+            self._calibrator = Calibrator(
+                name=self.metabolite_name,
+                x=self.cal_data["Cal_Concentration"].to_numpy(),
+                y=self.cal_data["Cal_Signal"].to_numpy() if self.is_int_std is False
+                else np.divide(self.cal_data["Cal_Signal"].to_numpy(), self.cal_data["IS_signal"]),
+                case=self.case
+            )
+        except Exception:
+            raise CalibrationError("There was an error while initializing the carlibrator")
+
         return self._calibrator
 
     def _quantify_no_int_std_no_curve(self, signal):
@@ -280,17 +302,14 @@ class Quantifier:
 class CaseError(Exception):
     pass
 
+class CalibrationError(Exception):
+    pass
+
+class QuantificationError(Exception):
+    pass
 
 if __name__ == "__main__":
     pd.options.display.max_columns = None
-    # COLS = [
-    #     "File Name",
-    #     "Sample Type",
-    #     "Molecule",
-    #     "Total Area",
-    #     "Internal Standard Concentration"
-    # ]
-    # data = read_data(r"C:\Users\legregam\PycharmProjects\OmniQuant\omniquant\test-data\test_data.csv")
 
     # Case 1: No IS, no cal points
     test_case_1 = (
@@ -356,8 +375,15 @@ if __name__ == "__main__":
     quant = Quantifier(test_case_2[0], test_case_2[1])
     print(quant.calibrator.scaled_polynome)
     print(quant.calibrator.equation)
-    quant.calibrator.polynome_plot.show()
-
+    # quant.calibrator.polynome_plot.show()
+    print(quant.calibrator.equation)
+    # print(f"a = {a}")
+    # a.reverse()
+    # print(f"a2 = {a}")
+    # b = np.poly1d(a)
+    # print(f"b = {b}")
+    # conc = (b - 70279200).roots
+    # print(conc)
     # print(data.head(10))
     # for metabolite in data.Molecule.unique():
     #     met_data = data.loc[data["Molecule"] == metabolite]
