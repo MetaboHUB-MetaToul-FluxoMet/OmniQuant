@@ -16,6 +16,7 @@ Steps:
 """
 
 from pathlib import Path
+from collections import namedtuple
 
 import numpy as np
 import pandas as pd
@@ -103,7 +104,11 @@ class Calibrator:
         Return's the equation by converting the [-1, 1] scaled polynomial to the original scale.
         :return: Converted polynomial to original scale
         """
-        return np.poly1d(list(self.scaled_polynome.convert().coef).reverse())
+        # Get the converted equation coefficients
+        coefficients = list(self.scaled_polynome.convert().coef)
+        # Reverse to get the coefficients in the standard order
+        coefficients.reverse()
+        return np.poly1d(coefficients)
 
     @property
     def scaled_polynome(self):
@@ -171,9 +176,13 @@ class Calibrator:
         )
         return self._polynome_plot
 
+    @property
+    def limits(self):
+        Limits = namedtuple("Limits", "lower upper")
+        return Limits(self.y.min(), self.y.max())
+
 
 class Quantifier:
-
     CASES = [1, 2, 3, 4, 5]
 
     def __init__(
@@ -286,14 +295,15 @@ class Quantifier:
             raise ValueError(f"Signal should be a number. Detected type: {type(signal)}:")
         return signal
 
-    def _quantify_no_int_std_with_curve(self):
-        return "Case 2"
+    def _quantify_no_int_std_with_curve(self, signal):
+        return (self.calibrator.equation - signal).roots[1]
 
     def _quantify_int_std_no_conc_no_curve(self):
         return "Case 3"
 
-    def _quantify_int_std_no_conc_with_curve(self):
-        return "Case 4"
+    def _quantify_int_std_no_conc_with_curve(self, signal, std_signal):
+
+        return (self.calibrator.equation - (signal/std_signal)).roots[1]
 
     def _quantify_int_std_with_conc(self):
         return "Case 5"
@@ -302,11 +312,14 @@ class Quantifier:
 class CaseError(Exception):
     pass
 
+
 class CalibrationError(Exception):
     pass
 
+
 class QuantificationError(Exception):
     pass
+
 
 if __name__ == "__main__":
     pd.options.display.max_columns = None
@@ -372,11 +385,13 @@ if __name__ == "__main__":
         test_case_4
     ]
 
-    quant = Quantifier(test_case_2[0], test_case_2[1])
+    quant = Quantifier(test_case_4[0], test_case_4[1])
     print(quant.calibrator.scaled_polynome)
+    # print(list(quant.calibrator.scaled_polynome.convert().coef).reverse())
+    quant.calibrator.polynome_plot.show()
     print(quant.calibrator.equation)
-    # quant.calibrator.polynome_plot.show()
-    print(quant.calibrator.equation)
+    print(quant.quantify(1163372160, 483495840))
+    print(quant.calibrator.limits)
     # print(f"a = {a}")
     # a.reverse()
     # print(f"a2 = {a}")
