@@ -91,8 +91,9 @@ class Calibrator:
 
         if axis not in ["x", "y"]:
             raise ValueError(f"Axis term can only be x or y. Detected term: {axis}")
-
+        # Get index where value to drop is situated
         idx = np.where(getattr(self, axis) == value)[0]
+        # keep record of deleted values and associated index
         self.excluded_values["x"].append((idx, self.x[idx]))
         self.excluded_values["y"].append((idx, self.y[idx]))
         self.x, self.y = np.delete(self.x, idx), np.delete(self.y, idx)
@@ -119,6 +120,7 @@ class Calibrator:
 
         if self._polynome:
             return self._polynome
+        # Create polynome w/ calibration data (x=concentrations, y=signals/ratios)
         self._polynome, polynome_details = np.polynomial.Polynomial.fit(
             x=self.x,
             y=self.y,
@@ -153,18 +155,21 @@ class Calibrator:
             case _:
                 raise ValueError("Couldn't coerce name for y axis. Please make sure you have calibration curve data")
 
+        # Generate the graph object containing the calibration points
         points = go.Scatter(
             x=self.x,
             y=self.y,
             mode='markers',
             name='data'
         )
+        # Generate fitted curve to calibration points
         poly_x, poly_y = self.scaled_polynome.linspace()
         trend = go.Scatter(
             x=poly_x,
             y=poly_y,
             mode='lines'
         )
+        # Draw out figure
         data = [points, trend]
         self._polynome_plot = go.Figure(data=data)
         self._polynome_plot.update_layout({
@@ -178,6 +183,11 @@ class Calibrator:
 
     @property
     def limits(self):
+        """
+        Lower and upper limits for the calibration curve
+        :return: namedtuple containing limits
+        """
+
         Limits = namedtuple("Limits", "lower upper")
         return Limits(self.y.min(), self.y.max())
 
@@ -302,8 +312,10 @@ class Quantifier:
         return "Case 3"
 
     def _quantify_int_std_no_conc_with_curve(self, signal, std_signal):
-
-        return (self.calibrator.equation - (signal/std_signal)).roots[1]
+        to_quant = signal/std_signal
+        if to_quant > self.calibrator.limits.upper or to_quant < self.calibrator.limits.lower:
+            raise ValueError("Out of calibration range")
+        return (self.calibrator.equation - (to_quant)).roots[1]
 
     def _quantify_int_std_with_conc(self):
         return "Case 5"
