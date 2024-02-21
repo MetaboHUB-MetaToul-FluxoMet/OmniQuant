@@ -14,7 +14,7 @@ Steps:
 * Returns the calculated data
 
 """
-
+import math
 from pathlib import Path
 from collections import namedtuple
 
@@ -35,7 +35,7 @@ def read_data(path: str) -> pd.DataFrame:
 
 class Calibrator:
 
-    def __init__(self, name, x, y, case, degree=2):
+    def __init__(self, name, x, y, case, degree=2, weight=None):
 
         # Private
         self._polynome = None
@@ -47,11 +47,20 @@ class Calibrator:
         self.y = y
         self.case = case
         self.degree = degree
+        self.weight = weight
         self.excluded_values = {
             "x": [],
             "y": []
         }
         self.polynome_details = None
+
+        match weight:
+            case "1/X":
+                self.weight = 1 / math.sqrt(self.x)
+            case "1/X²":
+                self.weight = 1 / self.x
+            case _:
+                self.weight = None
 
     def __setattr__(self, key, value):
 
@@ -89,6 +98,8 @@ class Calibrator:
         :param value: value to remove.
         """
 
+        # TODO: Use masks on arrays to keep track of points to use
+
         if axis not in ["x", "y"]:
             raise ValueError(f"Axis term can only be x or y. Detected term: {axis}")
         # Get index where value to drop is situated
@@ -125,7 +136,8 @@ class Calibrator:
             x=self.x,
             y=self.y,
             deg=self.degree,
-            full=True
+            full=True,
+            w=self.weight  # TODO: test ponderation compared to commercial software
         )
         self.polynome_details = {
             "SSR": polynome_details[0],
@@ -182,6 +194,12 @@ class Calibrator:
         return self._polynome_plot
 
     @property
+    def residuals(self):
+        if self._residuals:
+            return self._residuals
+        return (self.equation(self.x) - self.y) / self.y
+
+    @property
     def limits(self):
         """
         Lower and upper limits for the calibration curve
@@ -212,6 +230,7 @@ class Quantifier:
         self.is_int_std_conc_known = False
         self.is_cal_points = False
         self.quantify = None
+        self.response_factor = 2
         self.case = self.select_case()
 
     def __repr__(self):
@@ -295,7 +314,21 @@ class Quantifier:
 
         return self._calibrator
 
-    def _quantify_no_int_std_no_curve(self, signal):
+    @staticmethod
+    def apply_response_factor(func):
+        """
+        Wrapper around quantification function to apply the response factor
+        :param func: function to wrap (self.quantify)
+        :return: wrapped function
+        """
+
+        def wrapper(self, *args, **kwargs):
+            return func(self, *args, **kwargs) * self.response_factor
+
+        return wrapper
+
+    @staticmethod
+    def _quantify_no_int_std_no_curve(signal):
         """
         Relative quantification of our signal.
         :param signal: Metabolite sample signal/area
@@ -308,17 +341,21 @@ class Quantifier:
     def _quantify_no_int_std_with_curve(self, signal):
         return (self.calibrator.equation - signal).roots[1]
 
-    def _quantify_int_std_no_conc_no_curve(self):
-        return "Case 3"
+    @staticmethod
+    def _quantify_int_std_no_conc_no_curve(signal, std_signal):
+        return signal / std_signal
 
     def _quantify_int_std_no_conc_with_curve(self, signal, std_signal):
-        to_quant = signal/std_signal
-        if to_quant > self.calibrator.limits.upper or to_quant < self.calibrator.limits.lower:
-            raise ValueError("Out of calibration range")
-        return (self.calibrator.equation - (to_quant)).roots[1]
+        to_quant = signal / std_signal
+        if to_quant > self.calibrator.limits.upper:
+            raise CalibrationError("Under calibration range")
+        if to_quant < self.calibrator.limits.lower:
+            raise CalibrationError("Over calibration range")
+        return (self.calibrator.equation - to_quant).roots[1]
 
-    def _quantify_int_std_with_conc(self):
-        return "Case 5"
+    @apply_response_factor
+    def _quantify_int_std_with_conc(self, signal):
+        return signal * self.cal_data["IS_Concentration"]
 
 
 class CaseError(Exception):
@@ -389,12 +426,25 @@ if __name__ == "__main__":
         )
     )
     # Case 5: IS present, [IS] known (NMR with TSP for example)
+    test_case_5 = (
+        "Acetate",
+        pd.DataFrame.from_dict(
+            {
+                "Cal_name": "",
+                "Cal_Signal": "",
+                "Cal_Concentration": "",
+                "IS_signal": np.array([0.703773953]),
+                "IS_Concentration": np.array([4.2])
+            }
+        )
+    )
 
     test_data = [
         test_case_1,
         test_case_2,
         test_case_3,
-        test_case_4
+        test_case_4,
+        test_case_5
     ]
 
     quant = Quantifier(test_case_4[0], test_case_4[1])
@@ -403,6 +453,7 @@ if __name__ == "__main__":
     quant.calibrator.polynome_plot.show()
     print(quant.calibrator.equation)
     print(quant.quantify(1163372160, 483495840))
+    print((quant.calibrator.equation(quant.calibrator.x) - quant.calibrator.y) / quant.calibrator.y)
     print(quant.calibrator.limits)
     # print(f"a = {a}")
     # a.reverse()
