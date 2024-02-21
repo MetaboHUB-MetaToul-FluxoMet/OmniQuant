@@ -40,11 +40,12 @@ class Calibrator:
         # Private
         self._polynome = None
         self._polynome_plot = None
+        self._x = x
+        self._y = y
+        self._mask = np.full(shape=self._x.shape, fill_value=False)
 
         # Public
         self.name = name
-        self.x = x
-        self.y = y
         self.case = case
         self.degree = degree
         self.weight = weight
@@ -76,10 +77,22 @@ class Calibrator:
             if not value.all() > 0:
                 raise ValueError(f"All the values of the calibration data arrays must be positive")
 
-        if (key == "case") and (value not in [2, 4]):
+            self.__dict__[f"_{key}"] = value
+
+        elif (key == "case") and (value not in [2, 4]):
             raise ValueError(f"Use case can only be 2 or 4. Detected case: {key}")
 
-        self.__dict__[key] = value
+        else:
+            self.__dict__[key] = value
+
+    # x and y axes are handled using a common mask to ease data point exclusion and inclusion
+    @property
+    def x(self):
+        return np.ma.masked_array(self._x, mask=self._mask).compressed()
+
+    @property
+    def y(self):
+        return np.ma.masked_array(self._y, mask=self._mask).compressed()
 
     def _reset(self):
         """
@@ -89,31 +102,42 @@ class Calibrator:
         self._scaled_polynome = None
         self._polynome_plot = None
 
-    def drop(self, axis, value):
+    # def drop(self, axis, value):
+    #     """
+    #     Drop a value and associated value from axes x and y using index. The index and the value are saved to the
+    #     excluded values.
+    #     :param axis: axis x or y on which to search for value to remove. The removal of a value from an axis removes
+    #                  its sister value from the other axis.
+    #     :param value: value to remove.
+    #     """
+    #
+    #     # TODO: Use masks on arrays to keep track of points to use
+    #
+    #     if axis not in ["x", "y"]:
+    #         raise ValueError(f"Axis term can only be x or y. Detected term: {axis}")
+    #     # Get index where value to drop is situated
+    #     idx = np.where(getattr(self, axis) == value)[0]
+    #     # keep record of deleted values and associated index
+    #     self.excluded_values["x"].append((idx, self.x[idx]))
+    #     self.excluded_values["y"].append((idx, self.y[idx]))
+    #     self.x, self.y = np.delete(self.x, idx), np.delete(self.y, idx)
+    #     self._reset()
+
+    def update_axes(self, indice):
         """
-        Drop a value and associated value from axes x and y using index. The index and the value are saved to the
-        excluded values.
-        :param axis: axis x or y on which to search for value to remove. The removal of a value from an axis removes
-                     its sister value from the other axis.
-        :param value: value to remove.
+        Update the axes mask at given indice and make value opposite
+
+        :param indice: indice at which the given value should be included/excluded
         """
 
-        # TODO: Use masks on arrays to keep track of points to use
-
-        if axis not in ["x", "y"]:
-            raise ValueError(f"Axis term can only be x or y. Detected term: {axis}")
-        # Get index where value to drop is situated
-        idx = np.where(getattr(self, axis) == value)[0]
-        # keep record of deleted values and associated index
-        self.excluded_values["x"].append((idx, self.x[idx]))
-        self.excluded_values["y"].append((idx, self.y[idx]))
-        self.x, self.y = np.delete(self.x, idx), np.delete(self.y, idx)
+        self._mask[indice] = ~self._mask[indice]
         self._reset()
 
     @property
     def equation(self):
         """
         Return's the equation by converting the [-1, 1] scaled polynomial to the original scale.
+
         :return: Converted polynomial to original scale
         """
         # Get the converted equation coefficients
@@ -195,8 +219,6 @@ class Calibrator:
 
     @property
     def residuals(self):
-        if self._residuals:
-            return self._residuals
         return (self.equation(self.x) - self.y) / self.y
 
     @property
@@ -453,27 +475,3 @@ if __name__ == "__main__":
     quant.calibrator.polynome_plot.show()
     print(quant.calibrator.equation)
     print(quant.quantify(1163372160, 483495840))
-    print((quant.calibrator.equation(quant.calibrator.x) - quant.calibrator.y) / quant.calibrator.y)
-    print(quant.calibrator.limits)
-    # print(f"a = {a}")
-    # a.reverse()
-    # print(f"a2 = {a}")
-    # b = np.poly1d(a)
-    # print(f"b = {b}")
-    # conc = (b - 70279200).roots
-    # print(conc)
-    # print(data.head(10))
-    # for metabolite in data.Molecule.unique():
-    #     met_data = data.loc[data["Molecule"] == metabolite]
-    #     met_data = met_data[COLS]
-    #     quantifier = Quantifier(
-    #         metabolite_name=metabolite,
-    #         cal_data=met_data.loc[met_data["Sample Type"] == "Standard", "Total Area"].values,
-    #         signal=met_data.loc[met_data["Sample Type"] == "Unknown", "Total Area"].values,
-    #         int_std="IDMS",
-    #         int_std_conc=None,
-    #         is_int_std=True,
-    #         is_int_std_conc_known=False,
-    #         is_cal_points=True
-    #     )
-    #     print(quantifier)
