@@ -41,6 +41,18 @@ class Quantifier:
                 f"Is the internal standard concentration known: {'Yes' if self.is_int_std_conc_known else 'No'}\n"
                 f"Are there multiple calibration points: {'Yes' if self.is_cal_points else 'No'}")
 
+    @classmethod
+    def from_calibration(cls, file: str, **kwargs):
+        """
+        This method is used to get the calibration data from the user. It
+        reads the calibration data from a text file and returns it as a
+        pandas DataFrame.
+
+        :return: A pandas DataFrame containing the calibration data.
+        """
+        data = pd.read_csv(file, sep="\t")
+        return Quantifier(cal_data=data, **kwargs)
+
     @property
     def case(self):
         return self._case
@@ -70,10 +82,10 @@ class Quantifier:
         case = 1
         if not self.cal_data.empty:
             # Check if there are any calibration points and if there are more than one
-            self.is_cal_points = self.cal_data["Cal_Signal"].any() and len(
-                self.cal_data["Cal_Signal"] > 1)
+            self.is_cal_points = self.cal_data["Signal"].any() and len(
+                self.cal_data["Signal"] > 1)
             # Check if an internal standard is present
-            self.is_int_std = self.cal_data["IS_Signal"].any()
+            self.is_int_std = self.cal_data["IS_signal"].any()
             # Check if the concentration of the internal standard is known
             self.is_int_std_conc_known = self.cal_data[
                 "IS_Concentration"].any()
@@ -123,16 +135,16 @@ class Quantifier:
             self._calibrator = Calibrator(
                 name=self.metabolite_name,
                 x=self.cal_data["Cal_Concentration"].to_numpy(),
-                y=self.cal_data["Cal_Signal"].to_numpy() if not self.is_int_std
-                else np.divide(self.cal_data["Cal_Signal"].to_numpy(),
-                               self.cal_data["IS_Signal"]),
+                y=self.cal_data["Signal"].to_numpy() if not self.is_int_std
+                else np.divide(self.cal_data["Signal"].to_numpy(),
+                               self.cal_data["IS_signal"]),
                 case=self.case,
                 weight=self.calib_weight,
                 **self._kwargs
             )
-        except Exception:
+        except Exception as e:
             raise CalibrationError(
-                "There was an error while initializing the calibrator")
+                f"There was an error while initializing the calibrator: {e}")
 
         return self._calibrator
 
@@ -202,10 +214,10 @@ class Quantifier:
                   self.calibrator.equation[1]
 
         if to_quant > self.calibrator.limits.upper:
-            return (res, ">ULOQ")
+            return res, ">ULOQ"
         if to_quant < self.calibrator.limits.lower:
-            return (res, "<LLOQ")
-        return (res, None)
+            return res, "<LLOQ"
+        return res, None
 
     @apply_response_factor
     def _quantify_int_std_with_conc(self, signal):
