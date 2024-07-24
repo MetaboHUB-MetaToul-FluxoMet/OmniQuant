@@ -109,6 +109,7 @@ class Calibrator:
         Function to reset the polynomials. Should be called when any method modifies the calibration data (exclusion of
         some data points for example)
         """
+        self._polynome = None
         self._scaled_polynome = None
         self._polynome_plot = None
 
@@ -119,7 +120,7 @@ class Calibrator:
         :param indice: indice at which the given value should be included/excluded
         """
 
-        self._mask[indice] = ~self._mask[indice]
+        self._mask[indice] = not self._mask[indice]
         self._reset()
 
     @property
@@ -348,8 +349,8 @@ if __name__ == "__main__":
 # print(quant.calibrator.scaled_polynome)
 # # print(list(quant.calibrator.scaled_polynome.convert().coef).reverse())
 #  quant.calibrator.polynome_plot.show()
-#
+
 # ratio = 506132736 / 436619616
-#print(ratio)
-# # print(quant.calibrator.equation(ratio))
-#print(quant.quantify(506132736, 436619616))
+# print(ratio)
+# print(quant.calibrator.equation(ratio))
+# print(quant.quantify(506132736, 436619616))
