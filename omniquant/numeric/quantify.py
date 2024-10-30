@@ -85,10 +85,10 @@ class Quantifier:
             self.is_cal_points = self.cal_data["Signal"].any() and len(
                 self.cal_data["Signal"] > 1)
             # Check if an internal standard is present
-            self.is_int_std = self.cal_data["IS_signal"].any()
+            self.is_int_std = self.cal_data["IS Signal"].any()
             # Check if the concentration of the internal standard is known
             self.is_int_std_conc_known = self.cal_data[
-                "IS_Concentration"].any()
+                "IS Concentration"].any()
 
             # Assign the case number based on the checks
             if self.is_cal_points:
