@@ -56,8 +56,8 @@ class Calibrator:
         self.case: int = case
         self.degree: int = degree
         self.excluded_values: dict = {
-            "x": [],
-            "y": []
+            "x": np.ma.masked_array(self._x, mask=~self._mask).compressed(),
+            "y": np.ma.masked_array(self._y, mask=~self._mask).compressed()
         }
         self.polynome_details: Union[np.ndarray, None] = None
 
@@ -87,9 +87,9 @@ class Calibrator:
 
             self.__dict__[f"_{key}"] = value
 
-        elif (key == "case") and (value not in [2, 4]):
+        elif key == "case" and value not in [2, 4]:
             raise ValueError(
-                f"Use case can only be 2 or 4. Detected case: {key}")
+                f"Use case can only be 2 or 4. Detected case: {value}")
 
         else:
             self.__dict__[key] = value
@@ -104,15 +104,6 @@ class Calibrator:
     def y(self) -> np.ndarray:
         return np.ma.masked_array(self._y, mask=self._mask).compressed()
 
-    def _reset(self):
-        """
-        Function to reset the polynomials. Should be called when any method modifies the calibration data (exclusion of
-        some data points for example)
-        """
-        self._polynome = None
-        self._scaled_polynome = None
-        self._polynome_plot = None
-
     def update_axes(self, indice: int):
         """
         Update the axes mask at given indice and make value opposite
@@ -122,6 +113,16 @@ class Calibrator:
 
         self._mask[indice] = not self._mask[indice]
         self._reset()
+
+    def _reset(self):
+        """
+        Function to reset the polynomials. Should be called when any method modifies the calibration data (exclusion of
+        some data points for example)
+        """
+        self._polynome = None
+        self._scaled_polynome = None
+        self._polynome_plot = None
+
 
     @property
     def equation(self) -> np.poly1d:
@@ -176,7 +177,8 @@ class Calibrator:
         y_name_dict = {2: "Signal", 4: "Signal/IS"}
         if self.case not in y_name_dict:
             raise ValueError(
-                "Couldn't coerce name for y axis. Please make sure you have calibration curve data")
+                "Couldn't coerce name for y axis. Please make sure you have "
+                "calibration curve data")
         y_name = y_name_dict[self.case]
 
         # Generate the graph object containing the calibration points
