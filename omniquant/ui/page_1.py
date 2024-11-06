@@ -141,7 +141,13 @@ if cal_select_btn:
 sample_data = session.get_object("sample_data")
 cal_data = session.get_object("cal_data")
 
-if sample_data:
+submit_data = st.button(
+    label="Submit Data",
+    on_click=set_state,
+    args=[0]
+)
+
+if st.session_state.get("page_1_state") == 0:
     # Display data and allow for selection of metabolites to drop
     with st.expander(label="metabolite_selector", expanded=False):
         to_drop = st.multiselect(
