@@ -134,10 +134,10 @@ class Quantifier:
         try:
             self._calibrator = Calibrator(
                 name=self.metabolite_name,
-                x=self.cal_data["Cal_Concentration"].to_numpy(),
+                x=self.cal_data["Cal Concentration"].to_numpy(),
                 y=self.cal_data["Signal"].to_numpy() if not self.is_int_std
                 else np.divide(self.cal_data["Signal"].to_numpy(),
-                               self.cal_data["IS_signal"]),
+                               self.cal_data["IS Signal"]),
                 case=self.case,
                 weight=self.calib_weight,
                 **self._kwargs
